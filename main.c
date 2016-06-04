@@ -10,15 +10,18 @@
 #define NLIMBS(n)                                                       \
     ((mp_size_t) ((__GMP_MAX (53, n) + 2 * GMP_NUMB_BITS - 1) / GMP_NUMB_BITS))
 #define MPF_D_SIZE(prec) (((prec) + 1) * sizeof(mp_limb_t))
+#define MPZ_D_SIZE(alloc) ((alloc) * sizeof(mp_limb_t))
 #define MPF_PACKED_LIMBS(prec) ((prec) + 4);
+#define MPZ_PACKED_LIMBS(alloc) ((alloc) + 2);
 #define MPF_PACKED_BYTES ((NLIMBS(mpf_get_default_prec()) + 3) * sizeof(mp_limb_t))
+
 
 mp_limb_t *mpf_pack(mp_limb_t *dest, mpf_t *src, int n)
 {
     if (dest == NULL) {
         size_t size = 0;
         for (int i = 0; i < n; i++)
-            size += src[i]->_mp_prec + 4;
+            size += MPF_PACKED_LIMBS(src[i]->_mp_prec);
         dest = (mp_limb_t *)malloc(size * sizeof(mp_limb_t));
     }
     size_t offset = 0;
@@ -47,9 +50,48 @@ mpf_t *mpf_unpack(mpf_t *dest, mp_limb_t *src, int n)
         int prec = dest[i]->_mp_prec = src[offset];
         dest[i]->_mp_size = src[offset + 1];
         dest[i]->_mp_exp = src[offset + 2];
-        dest[i]->_mp_d = malloc((prec + 1) * sizeof(mp_limb_t));
+        dest[i]->_mp_d = malloc(MPF_D_SIZE(prec));
         memcpy(dest[i]->_mp_d, &src[offset + 3], MPF_D_SIZE(prec));
         offset += MPF_PACKED_LIMBS(prec);
+    }
+    return dest;
+}
+
+mp_limb_t *mpz_pack(mp_limb_t *dest, mpz_t *src, int n)
+{
+    if (dest == NULL) {
+        size_t size = 0;
+        for (int i = 0; i < n; i++)
+            size += MPZ_PACKED_LIMBS(src[i]->_mp_alloc);
+        dest = (mp_limb_t *)malloc(size * sizeof(mp_limb_t));
+    }
+    size_t offset = 0;
+    for (int i = 0; i < n; i++) {
+        int alloc = dest[offset] = src[i]->_mp_alloc;
+        dest[offset + 1] = src[i]->_mp_size;
+        memcpy(&dest[offset + 2], src[i]->_mp_d, MPZ_D_SIZE(alloc));
+        offset += MPZ_PACKED_LIMBS(alloc);
+    }
+    return dest;
+}
+
+mpz_t *mpz_unpack(mpz_t *dest, mp_limb_t *src, int n)
+{
+    if (dest == NULL) {
+        dest = (mpz_t *)malloc(sizeof(mpz_t) * n);
+    }
+    else {
+        for (int i = 0; i < n; i++)
+            if (dest[i]->_mp_d)
+                free(dest[i]->_mp_d);
+    }
+    size_t offset = 0;
+    for (int i = 0; i < n; i++) {
+        int alloc = dest[i]->_mp_alloc = src[offset];
+        dest[i]->_mp_size = src[offset + 1];
+        dest[i]->_mp_d = malloc(MPZ_D_SIZE(alloc));
+        memcpy(dest[i]->_mp_d, &src[offset + 2], MPZ_D_SIZE(alloc));
+        offset += MPZ_PACKED_LIMBS(alloc);
     }
     return dest;
 }
@@ -67,6 +109,24 @@ void mpf_packed_add(void *_in, void *_inout, int *len, MPI_Datatype *datatype)
     for (int i = 0; i < *len; i++) {
         mpf_clear(in[i]);
         mpf_clear(inout[i]);
+    }
+    free(in);
+    free(inout);
+}
+
+void mpz_packed_add(void *_in, void *_inout, int *len, MPI_Datatype *datatype)
+{
+    mpz_t *in = mpz_unpack(NULL, (mp_limb_t *)_in, *len);
+    mpz_t *inout = mpz_unpack(NULL, (mp_limb_t *)_inout, *len);
+
+    for (int i = 0; i < *len; i++)
+        mpz_add(inout[i], in[i], inout[i]);
+
+    mpz_pack((mp_limb_t *)_inout, inout, *len);
+
+    for (int i = 0; i < *len; i++) {
+        mpz_clear(in[i]);
+        mpz_clear(inout[i]);
     }
     free(in);
     free(inout);
