@@ -35,7 +35,8 @@ mpf_t *unpack(mpf_t *dest, mp_limb_t *src, int n)
         dest[i]->_mp_size = src[offset + 0];
         dest[i]->_mp_prec = src[offset + 1];
         dest[i]->_mp_exp = src[offset + 2];
-        dest[i]->_mp_d = &src[offset + 3];
+        dest[i]->_mp_d = malloc(NLIMBS * sizeof(mp_limb_t));
+        memcpy(dest[i]->_mp_d, &src[offset + 3], NLIMBS * sizeof(mp_limb_t));
         offset += PACKED_LIMBS;
     }
     return dest;
