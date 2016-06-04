@@ -13,7 +13,7 @@
 #define MPF_PACKED_LIMBS(prec) ((prec) + 4);
 #define MPF_PACKED_BYTES ((NLIMBS(mpf_get_default_prec()) + 3) * sizeof(mp_limb_t))
 
-mp_limb_t *pack(mp_limb_t *dest, mpf_t *src, int n)
+mp_limb_t *mpf_pack(mp_limb_t *dest, mpf_t *src, int n)
 {
     if (dest == NULL) {
         size_t size = 0;
@@ -32,7 +32,7 @@ mp_limb_t *pack(mp_limb_t *dest, mpf_t *src, int n)
     return dest;
 }
 
-mpf_t *unpack(mpf_t *dest, mp_limb_t *src, int n)
+mpf_t *mpf_unpack(mpf_t *dest, mp_limb_t *src, int n)
 {
     if (dest == NULL) {
         dest = (mpf_t *)malloc(sizeof(mpf_t) * n);
@@ -54,15 +54,15 @@ mpf_t *unpack(mpf_t *dest, mp_limb_t *src, int n)
     return dest;
 }
 
-void packed_add(void *_in, void *_inout, int *len, MPI_Datatype *datatype)
+void mpf_packed_add(void *_in, void *_inout, int *len, MPI_Datatype *datatype)
 {
-    mpf_t *in = unpack(NULL, (mp_limb_t *)_in, *len);
-    mpf_t *inout = unpack(NULL, (mp_limb_t *)_inout, *len);
+    mpf_t *in = mpf_unpack(NULL, (mp_limb_t *)_in, *len);
+    mpf_t *inout = mpf_unpack(NULL, (mp_limb_t *)_inout, *len);
 
     for (int i = 0; i < *len; i++)
         mpf_add(inout[i], in[i], inout[i]);
 
-    pack((mp_limb_t *)_inout, inout, *len);
+    mpf_pack((mp_limb_t *)_inout, inout, *len);
 
     for (int i = 0; i < *len; i++) {
         mpf_clear(in[i]);
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
 
     // Create an MPI Operation for adding mpfs
     MPI_Op MPI_SUM_MPF;
-    MPI_Op_create(packed_add, 1, &MPI_SUM_MPF);
+    MPI_Op_create(mpf_packed_add, 1, &MPI_SUM_MPF);
 
     // Create the number 1
     mpf_t n;
@@ -96,14 +96,14 @@ int main(int argc, char **argv)
     mpf_add_ui(n, n, 1);
 
     // Pack the number and sum over all processes
-    mp_limb_t *packed = pack(NULL, &n, 1);
+    mp_limb_t *packed = mpf_pack(NULL, &n, 1);
     mp_limb_t *sum_packed = malloc(MPF_PACKED_BYTES);
     MPI_Reduce(packed, sum_packed, 1, MPI_MPF, MPI_SUM_MPF, 0, MPI_COMM_WORLD);
 
     // Unpack the sum and print it
     if (rank == 0) {
         mpf_t sum;
-        unpack(&sum, sum_packed, 1);
+        mpf_unpack(&sum, sum_packed, 1);
         mp_exp_t exp;
         char *repr = mpf_get_str(NULL, &exp, 10, 0, sum);
         printf("value: 0.%s * 10^%d\n", repr, exp);
